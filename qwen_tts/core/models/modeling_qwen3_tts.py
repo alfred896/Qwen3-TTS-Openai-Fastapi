@@ -2532,6 +2532,8 @@ class Qwen3TTSForConditionalGeneration(Qwen3TTSPreTrainedModel, GenerationMixin)
             "subtalker_temperature": subtalker_temperature,
             "eos_token_id": eos_token_id
             if eos_token_id is not None
+            # Use multiple EOS tokens for more reliable generation termination:
+            # includes thinking EOS, TTS-level EOS/pad, and IM start/end tokens
             else [
                 self.config.talker_config.codec_eos_token_id,
                 self.config.talker_config.codec_think_eos_id,

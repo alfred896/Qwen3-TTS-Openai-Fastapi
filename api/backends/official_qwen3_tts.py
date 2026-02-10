@@ -17,10 +17,13 @@ from .base import TTSBackend
 
 logger = logging.getLogger(__name__)
 
-# OpenAI voice aliases that must not collide with custom voice names
+# OpenAI voice aliases that must not collide with custom voice names.
+# Hardcoded here to avoid circular imports with the router module.
 OPENAI_VOICE_ALIASES = {"alloy", "echo", "fable", "nova", "onyx", "shimmer"}
 
-# Built-in speaker names (always reserved, independent of model state)
+# Built-in speaker names (always reserved, independent of model state).
+# Hardcoded to break the circular dependency where get_supported_voices()
+# returns an empty list during initial custom voice loading.
 BUILTIN_VOICE_NAMES = {"vivian", "ryan", "sophia", "isabella", "evan", "lily"}
 
 # Valid custom voice name pattern: alphanumeric, underscores, hyphens, max 64 chars
