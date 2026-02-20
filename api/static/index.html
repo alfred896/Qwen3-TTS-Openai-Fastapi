@@ -878,12 +878,18 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
         async function loadSelectedModelDetails() {
             const modelSelect = document.getElementById('model');
             const modelDetails = document.getElementById('modelDetails');
-            if (!modelSelect.value) return;
+            if (!modelSelect.value) {
+                modelDetails.textContent = '';
+                return;
+            }
             try {
                 const response = await fetch(`/v1/models/${encodeURIComponent(modelSelect.value)}`);
                 if (response.ok) {
                     const data = await response.json();
-                    modelDetails.textContent = `Owner: ${data.owned_by} • Created: ${new Date(data.created * 1000).toISOString().split('T')[0]}`;
+                    const safeOwner = /^[A-Za-z0-9_.-]+$/.test(data.owned_by || '') ? data.owned_by : 'unknown';
+                    const createdTimestamp = Number.isFinite(data.created) ? data.created : 0;
+                    const createdDate = new Date(createdTimestamp * 1000).toISOString().split('T')[0];
+                    modelDetails.textContent = `Owner: ${safeOwner} • Created: ${createdDate}`;
                 } else {
                     modelDetails.textContent = '';
                 }
@@ -1096,13 +1102,14 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
                 const response = await fetch('/v1/audio/voice-clone/capabilities');
                 if (response.ok) {
                     const data = await response.json();
-                    const modelType = data.model_type || 'unknown';
+                    const rawModelType = String(data.model_type || 'unknown');
+                    const modelType = /^[A-Za-z0-9_-]+$/.test(rawModelType) ? rawModelType : 'unknown';
                     if (modelType === 'base') {
-                        modelTypeInfo.innerHTML = 'Backend model type: <strong>base</strong> — supports voice cloning plus base and custom cloned voices.';
+                        modelTypeInfo.textContent = 'Backend model type: base — supports voice cloning plus base and custom cloned voices.';
                     } else if (modelType === 'customvoice') {
-                        modelTypeInfo.innerHTML = 'Backend model type: <strong>customvoice</strong> — optimized for custom voices, voice cloning API is unavailable.';
+                        modelTypeInfo.textContent = 'Backend model type: customvoice — optimized for custom voices, voice cloning API is unavailable.';
                     } else {
-                        modelTypeInfo.innerHTML = `Backend model type: <strong>${modelType}</strong> — capabilities vary by backend model.`;
+                        modelTypeInfo.textContent = `Backend model type: ${modelType} — capabilities vary by backend model.`;
                     }
                     if (data.supported) {
                         let modesHtml = '';
