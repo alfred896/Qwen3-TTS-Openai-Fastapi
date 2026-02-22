@@ -7,6 +7,7 @@ This backend uses the official Qwen3-TTS Python implementation
 from the qwen_tts package.
 """
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -172,8 +173,9 @@ class OfficialQwen3TTSBackend(TTSBackend):
             await self.initialize()
         
         try:
-            # Generate speech
-            wavs, sr = self.model.generate_custom_voice(
+            # Offload blocking model call to a thread so the event loop stays responsive
+            wavs, sr = await asyncio.to_thread(
+                self.model.generate_custom_voice,
                 text=text,
                 language=language,
                 speaker=voice,
@@ -334,9 +336,9 @@ class OfficialQwen3TTSBackend(TTSBackend):
             )
 
         try:
-            # Call the model's voice cloning method
-            # ref_audio expects a tuple of (waveform, sample_rate)
-            wavs, sr = self.model.generate_voice_clone(
+            # Offload blocking model call to a thread so the event loop stays responsive
+            wavs, sr = await asyncio.to_thread(
+                self.model.generate_voice_clone,
                 text=text,
                 ref_audio=(ref_audio, ref_audio_sr),
                 ref_text=ref_text,
@@ -487,7 +489,8 @@ class OfficialQwen3TTSBackend(TTSBackend):
             raise RuntimeError(f"Custom voice '{voice}' not found")
 
         try:
-            wavs, sr = self.model.generate_voice_clone(
+            wavs, sr = await asyncio.to_thread(
+                self.model.generate_voice_clone,
                 text=text,
                 language=language,
                 voice_clone_prompt=prompt_items,

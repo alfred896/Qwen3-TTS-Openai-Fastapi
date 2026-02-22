@@ -178,38 +178,35 @@ class VLLMOmniQwen3TTSBackend(TTSBackend):
                 },
             }
             
-            # Generate using vLLM-Omni
-            omni_generator = self.omni.generate(inputs, self.sampling_params_list)
-            
-            # Process outputs
-            for stage_outputs in omni_generator:
-                for output in stage_outputs.request_output:
-                    # Extract audio from multimodal output
-                    audio_tensor = output.multimodal_output["audio"]
-                    sr = int(output.multimodal_output["sr"].item())
-                    
-                    # Convert to numpy
-                    audio_np = audio_tensor.float().detach().cpu().numpy()
-                    if audio_np.ndim > 1:
-                        audio_np = audio_np.flatten()
-                    
-                    # Apply speed adjustment if needed
-                    if speed != 1.0 and LIBROSA_AVAILABLE:
-                        audio_np = librosa.effects.time_stretch(
-                            audio_np.astype(np.float32), 
-                            rate=speed
-                        )
-                    elif speed != 1.0:
-                        logger.warning("Speed adjustment requested but librosa not available")
-                    
-                    return audio_np, sr
-            
-            raise RuntimeError("No audio returned from vLLM-Omni (no stage outputs)")
-            
+            # Run blocking synchronous vLLM-Omni generator in a thread worker
+            def _run_generate():
+                for stage_outputs in self.omni.generate(inputs, self.sampling_params_list):
+                    for output in stage_outputs.request_output:
+                        audio_tensor = output.multimodal_output["audio"]
+                        sr = int(output.multimodal_output["sr"].item())
+                        audio_np = audio_tensor.float().detach().cpu().numpy()
+                        if audio_np.ndim > 1:
+                            audio_np = audio_np.flatten()
+                        return audio_np, sr
+                return None
+
+            result = await asyncio.to_thread(_run_generate)
+            if result is None:
+                raise RuntimeError("No audio returned from vLLM-Omni (no stage outputs)")
+            audio_np, sr = result
+
+            # Apply speed adjustment if needed
+            if speed != 1.0 and LIBROSA_AVAILABLE:
+                audio_np = librosa.effects.time_stretch(audio_np.astype(np.float32), rate=speed)
+            elif speed != 1.0:
+                logger.warning("Speed adjustment requested but librosa not available")
+
         except Exception as e:
             logger.error(f"vLLM-Omni speech generation failed: {e}")
             raise RuntimeError(f"vLLM-Omni speech generation failed: {e}")
-    
+
+        return audio_np, sr
+
     def synthesize_wav_bytes(
         self,
         text: str,

@@ -156,24 +156,33 @@ async def initialize_backend(warmup: bool = False) -> TTSBackend:
     if warmup:
         warmup_enabled = os.getenv("TTS_WARMUP_ON_START", "false").lower() == "true"
         if warmup_enabled:
-            logger.info("Performing backend warmup...")
+            logger.info("Performing backend warmup (3 requests)...")
+            # Use progressively longer texts so both LM decode paths and
+            # audio decoder CUDA graphs are exercised before real traffic hits.
+            _warmup_texts = [
+                "Hello.",
+                "Hello, this is a warmup test.",
+                "Hello, this is a longer warmup test to exercise the full decode pipeline.",
+            ]
             try:
                 custom_names = backend.get_custom_voice_names()
-                if backend.get_model_type() == "base" and custom_names:
-                    # Base models only support voice cloning, warm up with a custom voice
-                    await backend.generate_speech_with_custom_voice(
-                        text="Hello, this is a warmup test.",
-                        voice=custom_names[0],
-                        language="English",
-                    )
-                elif backend.get_model_type() == "base":
-                    logger.info("Skipping warmup: Base model has no custom voices to warm up with")
-                else:
-                    await backend.generate_speech(
-                        text="Hello, this is a warmup test.",
-                        voice="Vivian",
-                        language="English",
-                    )
+                for i, _text in enumerate(_warmup_texts, 1):
+                    if backend.get_model_type() == "base" and custom_names:
+                        await backend.generate_speech_with_custom_voice(
+                            text=_text,
+                            voice=custom_names[0],
+                            language="English",
+                        )
+                    elif backend.get_model_type() == "base":
+                        logger.info("Skipping warmup: Base model has no custom voices to warm up with")
+                        break
+                    else:
+                        await backend.generate_speech(
+                            text=_text,
+                            voice="Vivian",
+                            language="English",
+                        )
+                    logger.info(f"Warmup request {i}/{len(_warmup_texts)} completed")
                 logger.info("Backend warmup completed successfully")
             except Exception as e:
                 logger.warning(f"Backend warmup failed (non-critical): {e}")

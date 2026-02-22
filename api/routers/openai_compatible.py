@@ -5,9 +5,11 @@ OpenAI-compatible router for text-to-speech API.
 Implements endpoints compatible with OpenAI's TTS API specification.
 """
 
+import asyncio
 import base64
 import io
 import logging
+import os
 import time
 from typing import List, Optional
 
@@ -27,6 +29,15 @@ from ..services.text_processing import normalize_text
 from ..services.audio_encoding import encode_audio, get_content_type, DEFAULT_SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
+
+# Concurrency cap: prevents simultaneous requests from starving GPU memory.
+# Override with TTS_MAX_CONCURRENT env var (default 1 for single-GPU deployments).
+try:
+    _MAX_CONCURRENT = max(1, int(os.getenv("TTS_MAX_CONCURRENT", "1")))
+except ValueError:
+    logger.warning("Invalid TTS_MAX_CONCURRENT value; falling back to 1")
+    _MAX_CONCURRENT = 1
+_generation_semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
 router = APIRouter(
     tags=["OpenAI Compatible TTS"],
@@ -246,22 +257,41 @@ async def create_speech(
         # Extract language from model name if present, otherwise use request language
         model_language = extract_language_from_model(request.model)
         language = model_language if model_language else (request.language or "Auto")
-        
-        # Generate speech
-        audio, sample_rate = await generate_speech(
-            text=normalized_text,
-            voice=request.voice,
-            language=language,
-            instruct=request.instruct,
-            speed=request.speed,
-        )
-        
-        # Encode audio to requested format
-        audio_bytes = encode_audio(audio, request.response_format, sample_rate)
-        
+
+        # Guard against concurrent overload
+        async with _generation_semaphore:
+            # Generate speech
+            audio, sample_rate = await generate_speech(
+                text=normalized_text,
+                voice=request.voice,
+                language=language,
+                instruct=request.instruct,
+                speed=request.speed,
+            )
+
         # Get content type
         content_type = get_content_type(request.response_format)
-        
+
+        if request.stream:
+            # Stream encoded audio in chunks.
+            async def _pcm_chunks():
+                chunk_size = 4096
+                audio_bytes = await asyncio.to_thread(encode_audio, audio, request.response_format, sample_rate)
+                for i in range(0, len(audio_bytes), chunk_size):
+                    yield audio_bytes[i:i + chunk_size]
+
+            return StreamingResponse(
+                _pcm_chunks(),
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
+                    "Cache-Control": "no-cache",
+                },
+            )
+
+        # Encode audio to requested format (offloaded – pydub MP3 encoding is CPU-heavy)
+        audio_bytes = await asyncio.to_thread(encode_audio, audio, request.response_format, sample_rate)
+
         # Return audio response
         return Response(
             content=audio_bytes,
@@ -504,18 +534,19 @@ async def create_voice_clone(
             )
 
         # Generate voice clone
-        audio, sample_rate = await backend.generate_voice_clone(
-            text=normalized_text,
-            ref_audio=ref_audio,
-            ref_audio_sr=ref_sr,
-            ref_text=request.ref_text,
-            language=request.language or "Auto",
-            x_vector_only_mode=request.x_vector_only_mode,
-            speed=request.speed,
-        )
+        async with _generation_semaphore:
+            audio, sample_rate = await backend.generate_voice_clone(
+                text=normalized_text,
+                ref_audio=ref_audio,
+                ref_audio_sr=ref_sr,
+                ref_text=request.ref_text,
+                language=request.language or "Auto",
+                x_vector_only_mode=request.x_vector_only_mode,
+                speed=request.speed,
+            )
 
-        # Encode audio to requested format
-        audio_bytes = encode_audio(audio, request.response_format, sample_rate)
+        # Encode audio to requested format (offloaded – pydub MP3 encoding is CPU-heavy)
+        audio_bytes = await asyncio.to_thread(encode_audio, audio, request.response_format, sample_rate)
 
         # Get content type
         content_type = get_content_type(request.response_format)

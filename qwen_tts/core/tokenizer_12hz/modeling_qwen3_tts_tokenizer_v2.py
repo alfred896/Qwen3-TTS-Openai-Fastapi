@@ -39,7 +39,30 @@ from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from transformers.processing_utils import Unpack
 from transformers.utils import ModelOutput, auto_docstring, logging
 from transformers.utils.deprecation import deprecate_kwarg
-from transformers.utils.generic import check_model_inputs
+try:
+    from transformers.utils.generic import check_model_inputs as _check_model_inputs_raw
+    import inspect as _inspect
+    _params = _inspect.signature(_check_model_inputs_raw).parameters
+    # In transformers ≥4.57 the function is a factory: check_model_inputs(tie_last_hidden_states=True)
+    # In older versions it is a plain decorator: check_model_inputs(func).
+    # Detect by checking whether the first param is named 'func'.
+    _first_param = next(iter(_params), None)
+    if _first_param == "func":
+        # Plain decorator – wrap to accept optional call with ()
+        def check_model_inputs(*_a, **_kw):
+            if _a and callable(_a[0]) and not _kw:
+                return _check_model_inputs_raw(_a[0])
+            return _check_model_inputs_raw
+    else:
+        check_model_inputs = _check_model_inputs_raw
+except ImportError:
+    # Fallback no-op if the symbol is missing from this transformers version
+    def check_model_inputs(*_a, **_kw):
+        def _deco(fn):
+            return fn
+        if _a and callable(_a[0]) and not _kw:
+            return _a[0]
+        return _deco
 
 from .configuration_qwen3_tts_tokenizer_v2 import (
     Qwen3TTSTokenizerV2Config,

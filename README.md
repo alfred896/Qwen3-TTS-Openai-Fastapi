@@ -243,7 +243,8 @@ The server will start on `http://0.0.0.0:8880` by default.
 - `CORS_ORIGINS` - CORS origins (default: `*`)
 - `TTS_BACKEND` - Backend engine: `official` or `vllm_omni` (default: `official`)
 - `TTS_MODEL_NAME` - Override default model (optional)
-- `TTS_WARMUP_ON_START` - Warmup on startup: `true` or `false` (default: `false`)
+- `TTS_WARMUP_ON_START` - Warm up backend on startup with 3 staged requests: `true` or `false` (default: `false`)
+- `TTS_MAX_CONCURRENT` - Max concurrent synthesis requests handled per API process (default: `1`)
 - `ENABLE_VOICE_STUDIO` - Mount Voice Studio at `/voice-studio`: `true` or `false` (default: `false`)
 - `VOICE_LIBRARY_DIR` - Directory for storing voice profiles (default: `./voice_library`)
 
@@ -381,6 +382,12 @@ docker run -p 8880:8880 \
 - `GET /redoc` - ReDoc documentation
 - `GET /health` - Health check endpoint
 - `GET /` - Web interface
+
+### Speech API behavior notes
+
+- `POST /v1/audio/speech` supports `stream=true` and returns a chunked `StreamingResponse`.
+- Audio encoding is offloaded to worker threads to keep the FastAPI event loop responsive.
+- Concurrency is bounded by `TTS_MAX_CONCURRENT` to stabilize p95 tail latency under load.
 
 ## 🙏 Acknowledgments
 
