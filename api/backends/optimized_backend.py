@@ -77,6 +77,7 @@ class OptimizedQwen3TTSBackend(TTSBackend):
         self.config = _load_config()
         self.current_model_key: Optional[str] = None
         self._voice_prompt_cache: Dict[str, Any] = {}  # cache_key -> VoiceClonePromptItem list
+        self._ready = False
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -84,6 +85,13 @@ class OptimizedQwen3TTSBackend(TTSBackend):
 
     def _default_model_key(self) -> str:
         return self.config.get("default_model", "0.6B-CustomVoice")
+
+    def _base_model_key(self) -> str:
+        """Return the first Base model key from config, falling back to '0.6B-Base'."""
+        for key, cfg in self.config.get("models", {}).items():
+            if isinstance(cfg, dict) and cfg.get("type") == "base":
+                return key
+        return "0.6B-Base"
 
     def _model_info(self, model_key: str) -> dict:
         return self.config.get("models", {}).get(model_key, {})
@@ -379,7 +387,7 @@ class OptimizedQwen3TTSBackend(TTSBackend):
         cache_key: Optional[str] = None,
     ) -> Tuple[np.ndarray, int]:
         """Non-streaming voice cloning (uses Base model)."""
-        await self._ensure_model_loaded("0.6B-Base")
+        await self._ensure_model_loaded(self._base_model_key())
 
         t0 = time.time()
 
@@ -445,7 +453,7 @@ class OptimizedQwen3TTSBackend(TTSBackend):
 
         Yields (pcm_chunk, sample_rate) tuples as the model generates audio.
         """
-        await self._ensure_model_loaded("0.6B-Base")
+        await self._ensure_model_loaded(self._base_model_key())
 
         streaming_opts = self.config.get("optimization", {}).get("streaming", {})
         decode_window_frames = streaming_opts.get("decode_window_frames", 80)

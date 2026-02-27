@@ -125,9 +125,13 @@ async def lifespan(app: FastAPI):
                 _ka_tensor = torch.randn(512, 512, device=_ka_device)
 
                 async def _gpu_keepalive():
-                    while True:
-                        await asyncio.sleep(GPU_KEEPALIVE_INTERVAL)
-                        torch.matmul(_ka_tensor, _ka_tensor)
+                    try:
+                        while True:
+                            await asyncio.sleep(GPU_KEEPALIVE_INTERVAL)
+                            with torch.inference_mode():
+                                torch.matmul(_ka_tensor, _ka_tensor)
+                    except asyncio.CancelledError:
+                        pass
 
                 keepalive_task = asyncio.create_task(_gpu_keepalive())
                 logger.info(

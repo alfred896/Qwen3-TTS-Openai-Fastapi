@@ -107,8 +107,11 @@ response under the `voices` array, with their id prefixed by `clone:`:
 
 ## Notes
 
-- Voice library profiles always use the **Base** model.  The server
-  automatically switches to the Base model when it receives a `clone:` request.
+- Voice library profiles require the **Base** model.
+  - When using the **optimized backend** (`TTS_BACKEND=optimized`), the server
+    automatically switches to the Base model when it receives a `clone:` request.
+  - For other backends, `clone:` profiles only work if a Base model is already
+    loaded/selected; no automatic model switch is performed.
 - If `x_vector_only_mode` is `false` (ICL mode) and `ref_text` is empty, the
   request will fail with a `missing_ref_text` error.
 - The `VOICE_LIBRARY_DIR` env var must be set consistently between the API

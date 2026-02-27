@@ -172,7 +172,8 @@ class TestLoadVoiceProfile:
 class TestListVoicesVoiceLibrary:
     """The /v1/voices endpoint must include voice library profiles."""
 
-    def test_clone_voices_included_in_listing(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_clone_voices_included_in_listing(self, tmp_path):
         """Saved profiles appear as 'clone:Name' entries in the voices list."""
         from api.routers import openai_compatible as oc
 
@@ -193,14 +194,10 @@ class TestListVoicesVoiceLibrary:
         mock_backend.get_model_type.return_value = "customvoice"
         mock_backend.is_custom_voice.return_value = False
 
-        import asyncio
+        with patch.object(oc, "VOICE_LIBRARY_DIR", tmp_path), \
+             patch("api.routers.openai_compatible.get_tts_backend", return_value=mock_backend):
+            result = await oc.list_voices()
 
-        async def _run():
-            with patch.object(oc, "VOICE_LIBRARY_DIR", tmp_path), \
-                 patch("api.routers.openai_compatible.get_tts_backend", return_value=mock_backend):
-                return await oc.list_voices()
-
-        result = asyncio.get_event_loop().run_until_complete(_run())
         voice_ids = [v["id"] for v in result["voices"]]
         assert "clone:Dave" in voice_ids
 
@@ -303,6 +300,7 @@ class TestStreamGenerateCustomVoice:
 
     def test_method_exists(self):
         """Qwen3TTSModel has a stream_generate_custom_voice method."""
+        pytest.importorskip("torch")
         pytest.importorskip("librosa")
         from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
         assert hasattr(Qwen3TTSModel, "stream_generate_custom_voice")
@@ -310,6 +308,7 @@ class TestStreamGenerateCustomVoice:
 
     def test_method_raises_on_wrong_model_type(self):
         """Calling stream_generate_custom_voice on a non-customvoice model raises ValueError."""
+        pytest.importorskip("torch")
         pytest.importorskip("librosa")
         from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
 
@@ -325,6 +324,7 @@ class TestStreamGenerateCustomVoice:
 
     def test_method_raises_on_batch_input(self):
         """Passing a list as text raises ValueError (no batching supported)."""
+        pytest.importorskip("torch")
         pytest.importorskip("librosa")
         from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
 

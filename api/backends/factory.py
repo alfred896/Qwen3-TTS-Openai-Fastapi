@@ -26,6 +26,7 @@ def get_backend() -> TTSBackend:
     Get or create the global TTS backend instance.
     
     The backend is selected based on the TTS_BACKEND environment variable:
+    - "optimized": Optimized backend with torch.compile, CUDA graphs, dynamic model switching, and real-time streaming
     - "official" (default): Use official Qwen3-TTS implementation (GPU/CPU auto-detect)
     - "vllm_omni": Use vLLM-Omni for faster inference
     - "pytorch": CPU-optimized PyTorch backend
