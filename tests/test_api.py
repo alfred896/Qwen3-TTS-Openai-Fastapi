@@ -4,6 +4,9 @@
 Tests for API endpoints.
 """
 
+import json
+
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -187,6 +190,137 @@ class TestSpeechEndpoint:
             # In a real test with mocking, it would succeed
             assert "response_format" in request_data
             assert request_data["response_format"] == fmt
+
+
+class TestSpeechVoiceLibraryKwargsCompatibility:
+    """Tests for optional backend kwargs compatibility in voice library mode."""
+
+    @staticmethod
+    def _make_profile(tmp_path):
+        profile_dir = tmp_path / "profiles" / "alice"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        (profile_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "name": "Alice",
+                    "profile_id": "alice",
+                    "ref_audio_filename": "reference.wav",
+                    "x_vector_only_mode": True,
+                    "language": "English",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (profile_dir / "reference.wav").write_bytes(b"RIFF")
+
+    def test_voice_library_clone_skips_cache_key_for_strict_backend(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Backends without cache_key in signature should still work."""
+        from api.backends import factory
+        from api.routers import openai_compatible as oc
+
+        self._make_profile(tmp_path)
+
+        class StrictBackend:
+            def is_ready(self):
+                return True
+
+            def supports_voice_cloning(self):
+                return True
+
+            async def generate_voice_clone(
+                self,
+                text,
+                ref_audio,
+                ref_audio_sr,
+                ref_text=None,
+                language="Auto",
+                x_vector_only_mode=False,
+                speed=1.0,
+            ):
+                return np.zeros(8, dtype=np.float32), 24000
+
+        factory._backend_instance = StrictBackend()
+
+        monkeypatch.setattr(oc, "VOICE_LIBRARY_DIR", tmp_path)
+        monkeypatch.setattr(
+            oc.sf,
+            "read",
+            lambda *_args, **_kwargs: (np.zeros(8, dtype=np.float32), 24000),
+        )
+        monkeypatch.setattr(oc, "encode_audio", lambda *_args, **_kwargs: b"audio")
+        oc._ref_audio_cache.clear()
+
+        response = client.post(
+            "/v1/audio/speech",
+            json={
+                "model": "qwen3-tts",
+                "input": "hello",
+                "voice": "clone:Alice",
+                "response_format": "wav",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+
+    def test_voice_library_clone_passes_cache_key_when_supported(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Backends with cache_key support should receive cache_key."""
+        from api.backends import factory
+        from api.routers import openai_compatible as oc
+
+        self._make_profile(tmp_path)
+
+        class CacheKeyBackend:
+            def __init__(self):
+                self.received_cache_key = None
+
+            def is_ready(self):
+                return True
+
+            def supports_voice_cloning(self):
+                return True
+
+            async def generate_voice_clone(
+                self,
+                text,
+                ref_audio,
+                ref_audio_sr,
+                ref_text=None,
+                language="Auto",
+                x_vector_only_mode=False,
+                speed=1.0,
+                cache_key=None,
+            ):
+                self.received_cache_key = cache_key
+                return np.zeros(8, dtype=np.float32), 24000
+
+        backend = CacheKeyBackend()
+        factory._backend_instance = backend
+
+        monkeypatch.setattr(oc, "VOICE_LIBRARY_DIR", tmp_path)
+        monkeypatch.setattr(
+            oc.sf,
+            "read",
+            lambda *_args, **_kwargs: (np.zeros(8, dtype=np.float32), 24000),
+        )
+        monkeypatch.setattr(oc, "encode_audio", lambda *_args, **_kwargs: b"audio")
+        oc._ref_audio_cache.clear()
+
+        response = client.post(
+            "/v1/audio/speech",
+            json={
+                "model": "qwen3-tts",
+                "input": "hello",
+                "voice": "clone:ALICE",
+                "response_format": "wav",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert backend.received_cache_key == "alice"
 
 
 class TestVoiceCloneEndpoints:

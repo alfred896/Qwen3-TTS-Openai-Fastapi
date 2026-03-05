@@ -7,6 +7,7 @@ Implements endpoints compatible with OpenAI's TTS API specification.
 
 import asyncio
 import base64
+import inspect
 import io
 import json
 import logging
@@ -223,6 +224,22 @@ def get_voice_name(voice: str) -> str:
         return VOICE_MAPPING[voice.lower()]
     # Otherwise use the voice name directly
     return voice
+
+
+def _method_accepts_kwarg(method, kwarg: str) -> bool:
+    """Return True if a callable accepts a given keyword argument."""
+    try:
+        signature = inspect.signature(method)
+    except (TypeError, ValueError):
+        return False
+
+    if kwarg in signature.parameters:
+        return True
+
+    return any(
+        param.kind == inspect.Parameter.VAR_KEYWORD
+        for param in signature.parameters.values()
+    )
 
 
 async def generate_speech(
@@ -450,15 +467,21 @@ async def create_speech(
                     total_samples = 0
                     chunk_count = 0
                     sample_rate = 24000
+                    clone_stream_kwargs = {
+                        "text": normalized_text,
+                        "ref_audio": ref_audio_np,
+                        "ref_audio_sr": ref_sr,
+                        "ref_text": profile["ref_text"] or None,
+                        "language": clone_lang,
+                        "x_vector_only_mode": profile["x_vector_only_mode"],
+                    }
+                    if _method_accepts_kwarg(
+                        backend.generate_voice_clone_streaming, "cache_key"
+                    ):
+                        clone_stream_kwargs["cache_key"] = canonical_key
                     async with _generation_semaphore:
                         async for pcm_chunk, sr in backend.generate_voice_clone_streaming(
-                            text=normalized_text,
-                            ref_audio=ref_audio_np,
-                            ref_audio_sr=ref_sr,
-                            ref_text=profile["ref_text"] or None,
-                            language=clone_lang,
-                            x_vector_only_mode=profile["x_vector_only_mode"],
-                            cache_key=canonical_key,
+                            **clone_stream_kwargs,
                         ):
                             if pcm_chunk is not None and len(pcm_chunk) > 0:
                                 if not first_chunk_logged:
@@ -492,17 +515,19 @@ async def create_speech(
             else:
                 # Non-streaming path — honor the requested format (including wav)
                 gen_start = time.time()
+                clone_kwargs = {
+                    "text": normalized_text,
+                    "ref_audio": ref_audio_np,
+                    "ref_audio_sr": ref_sr,
+                    "ref_text": profile["ref_text"] or None,
+                    "language": clone_lang,
+                    "x_vector_only_mode": profile["x_vector_only_mode"],
+                    "speed": request.speed,
+                }
+                if _method_accepts_kwarg(backend.generate_voice_clone, "cache_key"):
+                    clone_kwargs["cache_key"] = canonical_key
                 async with _generation_semaphore:
-                    audio, sample_rate = await backend.generate_voice_clone(
-                        text=normalized_text,
-                        ref_audio=ref_audio_np,
-                        ref_audio_sr=ref_sr,
-                        ref_text=profile["ref_text"] or None,
-                        language=clone_lang,
-                        x_vector_only_mode=profile["x_vector_only_mode"],
-                        speed=request.speed,
-                        cache_key=canonical_key,
-                    )
+                    audio, sample_rate = await backend.generate_voice_clone(**clone_kwargs)
                 gen_time = time.time() - gen_start
                 audio_dur = len(audio) / sample_rate if sample_rate > 0 else 0
                 rtf = gen_time / audio_dur if audio_dur > 0 else 0
