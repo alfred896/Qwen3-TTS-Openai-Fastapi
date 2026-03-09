@@ -88,17 +88,20 @@ class ModelManager:
                 # Use HuggingFace API to download model (keyword args for huggingface_hub compatibility)
                 from huggingface_hub import snapshot_download
 
-                def _download(repo_id: str, cache_dir: str):
-                    return snapshot_download(repo_id=repo_id, cache_dir=cache_dir)
+                # Use HF token if set (required for gated models)
+                token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
-                # Run download in thread pool to avoid blocking
+                def _download(repo_id: str, cache_dir: str, hf_token: Optional[str] = None):
+                    kwargs = {"repo_id": repo_id, "cache_dir": cache_dir}
+                    if hf_token:
+                        kwargs["token"] = hf_token
+                    return snapshot_download(**kwargs)
+
+                # Bind current loop values so the executor sees the right model_id
+                cache_dir_str = str(self.cache_dir)
+                run_download = lambda mid=model_id, cd=cache_dir_str, t=token: _download(mid, cd, t)
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None,
-                    _download,
-                    model_id,
-                    str(self.cache_dir),
-                )
+                await loop.run_in_executor(None, run_download)
 
                 results[task_type] = True
                 logger.info(f"Downloaded {task_type}")

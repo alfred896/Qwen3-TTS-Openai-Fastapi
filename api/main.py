@@ -114,9 +114,9 @@ async def lifespan(app: FastAPI):
 
         model_manager = ModelManager(
             models_config={
-                "CustomVoice": "Qwen/Qwen3-TTS-CustomVoice",
-                "VoiceDesign": "Qwen/Qwen3-TTS-12Hz-Voice-Design",
-                "Base": "Qwen/Qwen3-TTS",
+                "CustomVoice": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+                "VoiceDesign": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+                "Base": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
             },
             voice_library_dir=VOICE_LIBRARY_DIR,
         )

@@ -8,9 +8,9 @@ def model_manager(tmp_path):
     """Create a ModelManager instance for testing."""
     return ModelManager(
         models_config={
-            "CustomVoice": "Qwen/Qwen3-TTS-CustomVoice",
-            "VoiceDesign": "Qwen/Qwen3-TTS-12Hz-Voice-Design",
-            "Base": "Qwen/Qwen3-TTS",
+            "CustomVoice": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+            "VoiceDesign": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "Base": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
         },
         cache_dir=tmp_path / "cache",
         voice_library_dir=tmp_path / "voice_library",
