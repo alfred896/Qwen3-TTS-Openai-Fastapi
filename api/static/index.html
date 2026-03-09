@@ -426,6 +426,26 @@
         </header>
 
         <main class="main-content">
+            <!-- Server model (CustomVoice / VoiceDesign / Base) -->
+            <section class="card" id="serverModelCard" style="border-color: rgba(34, 197, 94, 0.4); background: linear-gradient(135deg, rgba(34,197,94,0.08), rgba(59,130,246,0.05));">
+                <h2>🔄 Server model</h2>
+                <p style="color: #888; font-size: 12px; margin-bottom: 14px;">Switch which TTS model is loaded on the server (CustomVoice, VoiceDesign, Base).</p>
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div class="form-group" style="margin-bottom: 0; min-width: 200px;">
+                        <label for="serverModel">Active model</label>
+                        <select id="serverModel">
+                            <option value="CustomVoice">CustomVoice</option>
+                            <option value="VoiceDesign">VoiceDesign</option>
+                            <option value="Base">Base</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 140px;">
+                        <label for="serverModelStatus">Status</label>
+                        <input type="text" id="serverModelStatus" value="Loading…" readonly style="background: rgba(10,10,15,0.6); color: #00ff88; font-size: 13px;">
+                    </div>
+                </div>
+            </section>
+
             <!-- TTS Demo Card -->
             <section class="card">
                 <h2>Text-to-Speech Demo</h2>
@@ -656,6 +676,11 @@
                         <span class="icon">🎤</span>
                         <span class="title">/v1/voices</span>
                         <span class="desc">List Available Voices</span>
+                    </a>
+                    <a href="/voice-studio" class="link-card">
+                        <span class="icon">🎙️</span>
+                        <span class="title">/voice-studio</span>
+                        <span class="desc">Voice Studio — create & manage voice profiles</span>
                     </a>
                 </div>
             </section>
@@ -970,10 +995,64 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
             }
         }
 
+        // Server model (CustomVoice / VoiceDesign / Base) — load current and switch
+        async function loadServerModelState() {
+            const select = document.getElementById('serverModel');
+            const status = document.getElementById('serverModelStatus');
+            const card = document.getElementById('serverModelCard');
+            try {
+                const response = await fetch('/v1/models/current');
+                if (response.ok) {
+                    const data = await response.json();
+                    const current = data.current;
+                    if (current) {
+                        select.value = current;
+                        status.value = '✓ Loaded: ' + current;
+                        status.style.color = '#00ff88';
+                    } else {
+                        status.value = 'Ready';
+                        status.style.color = '#888';
+                    }
+                } else {
+                    status.value = 'Model manager not available';
+                    status.style.color = '#888';
+                    card.style.opacity = '0.85';
+                }
+            } catch (e) {
+                status.value = 'Could not get current model';
+                status.style.color = '#ffaa00';
+            }
+        }
+
+        async function switchServerModel() {
+            const select = document.getElementById('serverModel');
+            const status = document.getElementById('serverModelStatus');
+            const taskType = select.value;
+            status.value = 'Switching…';
+            status.style.color = '#ffaa00';
+            try {
+                const response = await fetch('/v1/models/switch?task_type=' + encodeURIComponent(taskType), { method: 'POST' });
+                if (response.ok) {
+                    const data = await response.json();
+                    status.value = '✓ Loaded: ' + (data.current || taskType);
+                    status.style.color = '#00ff88';
+                } else {
+                    status.value = '✗ Error (HTTP ' + response.status + ')';
+                    status.style.color = '#ff3232';
+                }
+            } catch (e) {
+                status.value = '✗ Error: ' + (e.message || 'Request failed');
+                status.style.color = '#ff3232';
+            }
+        }
+
+        document.getElementById('serverModel').addEventListener('change', switchServerModel);
+
         // Load voices, models and backend status on page load
         loadVoices();
         loadModels();
         loadBackendStatus();
+        loadServerModelState();
 
         // Voice Cloning functionality
         const voiceCloneCard = document.getElementById('voiceCloneCard');

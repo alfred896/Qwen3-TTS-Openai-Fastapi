@@ -51,8 +51,8 @@ GPU_KEEPALIVE_INTERVAL = int(os.getenv("GPU_KEEPALIVE_INTERVAL", "0"))
 # CORS configuration
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 
-# Voice Studio configuration
-ENABLE_VOICE_STUDIO = os.getenv("ENABLE_VOICE_STUDIO", "false").lower() == "true"
+# Voice Studio configuration (default True so /voice-studio is reachable)
+ENABLE_VOICE_STUDIO = os.getenv("ENABLE_VOICE_STUDIO", "true").lower() == "true"
 VOICE_LIBRARY_DIR = Path(os.getenv("VOICE_LIBRARY_DIR", "./voice_library")).resolve()
 
 # Get the directory containing static files
