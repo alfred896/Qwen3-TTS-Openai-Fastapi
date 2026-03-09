@@ -334,7 +334,8 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
         launched standalone via ``.launch()``.
     """
     ensure_dirs(initial_library_dir)
-    with gr.Blocks(title="Qwen3 Voice Studio", css=CSS, theme=gr.themes.Soft()) as demo:
+    # Gradio 6.0: css and theme are passed to launch() or mount_gradio_app(), not Blocks()
+    with gr.Blocks(title="Qwen3 Voice Studio") as demo:
         # Shared state variables
         state_base_url = gr.State(initial_base_url)
         state_library_dir = gr.State(str(initial_library_dir))
@@ -535,7 +536,8 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
                     # Voice clone (Base)
                     with gr.Tab("Voice Clone (Base)"):
                         # ===== VOICE MANAGEMENT SECTION =====
-                        with gr.Group(label="🎯 Test Saved Voice Profiles"):
+                        with gr.Group():
+                            gr.Markdown("### 🎯 Test Saved Voice Profiles")
                             with gr.Row():
                                 with gr.Column(scale=2):
                                     saved_voice_dropdown = gr.Dropdown(
@@ -550,7 +552,8 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
                             voice_info = gr.Markdown("### No voice selected\n\nSelect a saved voice profile to test it.", elem_classes=["small"])
 
                             # Synthesis test section
-                            with gr.Group(label="🎤 Test Synthesis with Saved Voice"):
+                            gr.Markdown("### 🎤 Test Synthesis with Saved Voice")
+                            with gr.Group():
                                 with gr.Row():
                                     test_text = gr.Textbox(
                                         value="This is a test of my saved voice profile.",
@@ -1076,7 +1079,11 @@ def main():
     args = parser.parse_args()
     app = build_app(args.base_url, Path(args.library_dir))
     app.queue(default_concurrency_limit=4).launch(
-        server_name=args.host, server_port=args.port, share=args.share
+        server_name=args.host,
+        server_port=args.port,
+        share=args.share,
+        css=CSS,
+        theme=gr.themes.Soft(),
     )
 
 

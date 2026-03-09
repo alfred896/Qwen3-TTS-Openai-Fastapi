@@ -245,7 +245,7 @@ if ENABLE_VOICE_STUDIO:
             parent_dir = Path(__file__).resolve().parent.parent
             if str(parent_dir) not in sys.path:
                 sys.path.insert(0, str(parent_dir))
-            from gradio_voice_studio import build_app
+            from gradio_voice_studio import build_app, CSS as VOICE_STUDIO_CSS
 
             voice_studio_host = "localhost" if HOST == "0.0.0.0" else HOST
             base_url = f"http://{voice_studio_host}:{PORT}"
@@ -256,6 +256,8 @@ if ENABLE_VOICE_STUDIO:
                 voice_studio_app,
                 path="/voice-studio",
                 root_path="/voice-studio",
+                css=VOICE_STUDIO_CSS,
+                theme=gr.themes.Soft(),
             )
             logger.info("Voice Studio mounted at /voice-studio")
         except Exception as e:
