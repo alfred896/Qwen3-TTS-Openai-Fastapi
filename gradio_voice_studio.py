@@ -503,6 +503,128 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
 
                     # Voice clone (Base)
                     with gr.Tab("Voice Clone (Base)"):
+                        # ===== VOICE MANAGEMENT SECTION =====
+                        with gr.Group(label="🎯 Test Saved Voice Profiles"):
+                            with gr.Row():
+                                with gr.Column(scale=2):
+                                    saved_voice_dropdown = gr.Dropdown(
+                                        choices=[],
+                                        label="Select Saved Voice Profile",
+                                        interactive=True,
+                                    )
+                                with gr.Column(scale=1):
+                                    reload_voices_btn = gr.Button("🔄 Reload Voices", variant="secondary")
+
+                            # Voice metadata display
+                            voice_info = gr.Markdown("### No voice selected\n\nSelect a saved voice profile to test it.", elem_classes=["small"])
+
+                            # Synthesis test section
+                            with gr.Group(label="🎤 Test Synthesis with Saved Voice"):
+                                with gr.Row():
+                                    test_text = gr.Textbox(
+                                        value="This is a test of my saved voice profile.",
+                                        label="Text to Synthesize",
+                                        lines=3,
+                                    )
+                                with gr.Row():
+                                    test_synthesize_btn = gr.Button("🔊 Synthesize", variant="primary")
+                                    test_output_audio = gr.Audio(
+                                        label="Output Audio",
+                                        type="filepath",
+                                    )
+
+                        # ===== VOICE LOADER & HANDLERS =====
+                        async def load_voices_list():
+                            """Fetch list of saved voices from backend."""
+                            try:
+                                url = f"{initial_base_url}/v1/models/voices/saved"
+                                async with httpx.AsyncClient(timeout=10) as client:
+                                    response = await client.get(url)
+
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    voices = data.get("voices", [])
+
+                                    # Create choices from voice names/ids
+                                    choices = [v.get("name", v.get("id")) for v in voices]
+
+                                    if choices:
+                                        info_text = f"✓ Found **{len(choices)} saved voices**"
+                                        return gr.Dropdown.update(choices=choices), gr.Markdown.update(value=info_text)
+                                    else:
+                                        return gr.Dropdown.update(choices=[]), "### No saved voices yet\n\nCreate and save a voice in CustomVoice or VoiceDesign first."
+                                else:
+                                    return gr.Dropdown.update(choices=[]), f"Failed to load voices (HTTP {response.status_code})"
+                            except Exception as e:
+                                logger.error(f"Failed to load voices: {e}")
+                                return gr.Dropdown.update(choices=[]), f"Error: {str(e)[:50]}"
+
+                        async def on_voice_selected(voice_name):
+                            """Handle voice selection."""
+                            if voice_name:
+                                return gr.Markdown.update(value=f"### Selected Voice: **{voice_name}**\n\nReady to synthesize with this profile.")
+                            return gr.Markdown.update(value="### No voice selected")
+
+                        async def synthesize_with_voice(text, voice_name):
+                            """Synthesize audio using selected voice profile."""
+                            if not voice_name:
+                                return None, gr.Audio.update(value=None)
+
+                            if not text or not text.strip():
+                                return None, gr.Audio.update(value=None)
+
+                            try:
+                                # Call speech synthesis endpoint with voice profile
+                                url = f"{initial_base_url}/v1/audio/speech"
+                                payload = {
+                                    "model": "qwen3-tts",
+                                    "input": text,
+                                    "voice": voice_name,
+                                    "response_format": "mp3",
+                                }
+
+                                async with httpx.AsyncClient(timeout=60) as client:
+                                    response = await client.post(url, json=payload)
+
+                                if response.status_code == 200:
+                                    # Save audio to temp file
+                                    fd, tmp_path = tempfile.mkstemp(suffix=".mp3")
+                                    os.close(fd)
+                                    with open(tmp_path, "wb") as f:
+                                        f.write(response.content)
+                                    return tmp_path, gr.Audio.update(value=tmp_path)
+                                else:
+                                    logger.error(f"Synthesis failed: HTTP {response.status_code}")
+                                    return None, gr.Audio.update(value=None)
+                            except Exception as e:
+                                logger.error(f"Synthesis error: {e}")
+                                return None, gr.Audio.update(value=None)
+
+                        # Wire up handlers
+                        reload_voices_btn.click(
+                            load_voices_list,
+                            outputs=[saved_voice_dropdown, voice_info],
+                        )
+
+                        saved_voice_dropdown.change(
+                            on_voice_selected,
+                            inputs=saved_voice_dropdown,
+                            outputs=voice_info,
+                        )
+
+                        test_synthesize_btn.click(
+                            synthesize_with_voice,
+                            inputs=[test_text, saved_voice_dropdown],
+                            outputs=[test_output_audio, test_output_audio],  # Update audio output
+                        )
+
+                        # Load voices on app initialization
+                        demo.load(
+                            load_voices_list,
+                            outputs=[saved_voice_dropdown, voice_info],
+                        )
+
+                        # ===== CONTINUE WITH EXISTING CLONE SECTION =====
                         with gr.Row():
                             with gr.Column(scale=1, min_width=320):
                                 clone_name = gr.Textbox(label="Profile name", placeholder="e.g. 'Facu - Mic Clone v1'")
