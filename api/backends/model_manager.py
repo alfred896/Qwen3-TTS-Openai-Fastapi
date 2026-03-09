@@ -73,20 +73,39 @@ class ModelManager:
         Download all configured models from HuggingFace.
 
         Returns:
-            Dict mapping model_id -> success (bool)
+            Dict mapping task_type -> success (bool)
         """
         results = {}
         logger.info(f"Starting download of {len(self.models_config)} models...")
 
+        # Ensure cache dir exists
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
         for task_type, model_id in self.models_config.items():
             try:
                 logger.info(f"Downloading {task_type} ({model_id})...")
-                # Placeholder: actual download logic will be implemented
+
+                # Use HuggingFace API to download model
+                from huggingface_hub import snapshot_download
+
+                # Run download in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    snapshot_download,
+                    model_id,
+                    str(self.cache_dir),  # cache_dir
+                )
+
                 results[task_type] = True
                 logger.info(f"Downloaded {task_type}")
             except (OSError, IOError, Exception) as e:
                 logger.error(f"Failed to download {task_type}: {e}")
                 results[task_type] = False
+
+        # Log summary
+        successful = sum(1 for v in results.values() if v)
+        logger.info(f"Download complete: {successful}/{len(results)} models")
 
         return results
 

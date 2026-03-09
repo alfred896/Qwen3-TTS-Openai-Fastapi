@@ -74,3 +74,22 @@ async def test_load_different_model_unloads_previous(model_manager):
 
     await model_manager.load_model("Base")
     assert model_manager.get_current_model() == "Base"
+
+
+@pytest.mark.asyncio
+async def test_download_all_models(model_manager, monkeypatch):
+    """Test downloading all models from HuggingFace."""
+    # Mock the HF snapshot_download to avoid actual downloads
+    def mock_snapshot_download(*args, **kwargs):
+        return "mocked_path"
+
+    # Patch huggingface_hub.snapshot_download
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download",
+        mock_snapshot_download,
+    )
+
+    results = await model_manager.download_all_models()
+    assert isinstance(results, dict)
+    assert len(results) == 3
+    assert all(results.values())  # All should be True
