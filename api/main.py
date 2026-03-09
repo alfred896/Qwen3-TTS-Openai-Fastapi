@@ -107,6 +107,36 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Backend initialization delayed: {e}")
         logger.info("Backend will be loaded on first request.")
 
+    # Initialize ModelManager with three models
+    try:
+        from .backends.model_manager import ModelManager
+        from .routers.model_manager import set_model_manager
+
+        model_manager = ModelManager(
+            models_config={
+                "CustomVoice": "Qwen/Qwen3-TTS-CustomVoice",
+                "VoiceDesign": "Qwen/Qwen3-TTS-12Hz-Voice-Design",
+                "Base": "Qwen/Qwen3-TTS",
+            },
+            voice_library_dir=VOICE_LIBRARY_DIR,
+        )
+
+        logger.info("Downloading all TTS models...")
+        download_results = await model_manager.download_all_models()
+        logger.info(f"Model downloads complete: {download_results}")
+
+        # Load the first model (CustomVoice)
+        logger.info("Loading initial model...")
+        await model_manager.load_model("CustomVoice")
+
+        # Register ModelManager globally
+        set_model_manager(model_manager)
+
+        logger.info("ModelManager initialized and ready")
+    except Exception as e:
+        logger.error(f"Failed to initialize ModelManager: {e}")
+        logger.info("Continuing without ModelManager")
+
     # GPU keepalive: periodic small matmul prevents AMD DPM from downclocking the GPU
     # after idle, keeping TTFB consistently low (~0.3 s instead of ~0.85 s after idle).
     # Enable with GPU_KEEPALIVE_INTERVAL=15 (seconds). Harmless on NVIDIA.
@@ -196,7 +226,10 @@ app.add_middleware(
 
 # Include routers
 from .routers.openai_compatible import router as openai_router
+from .routers.model_manager import router as model_manager_router
+
 app.include_router(openai_router, prefix="/v1")
+app.include_router(model_manager_router, prefix="/v1")
 
 # Mount static files if directory exists
 if STATIC_DIR.exists():
