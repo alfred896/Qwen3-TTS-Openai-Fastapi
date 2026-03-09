@@ -236,18 +236,12 @@ app.include_router(openai_router, prefix="/v1")
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Voice Studio: redirect /voice-studio -> /voice-studio/ and mount Gradio
+# Voice Studio: mount Gradio at /voice-studio (no redirect to avoid loops)
 if ENABLE_VOICE_STUDIO:
     if not GRADIO_AVAILABLE:
         logger.warning("Voice Studio enabled but gradio is not installed. Install with: pip install gradio")
     else:
         try:
-            # Redirect exact /voice-studio to /voice-studio/ so the mounted app receives the request
-            @app.get("/voice-studio", include_in_schema=False)
-            def voice_studio_redirect():
-                return RedirectResponse(url="/voice-studio/", status_code=302)
-
-            # Import gradio_voice_studio from parent directory (project root containing api/)
             parent_dir = Path(__file__).resolve().parent.parent
             if str(parent_dir) not in sys.path:
                 sys.path.insert(0, str(parent_dir))
@@ -257,17 +251,30 @@ if ENABLE_VOICE_STUDIO:
             base_url = f"http://{voice_studio_host}:{PORT}"
             voice_studio_app = build_app(base_url, VOICE_LIBRARY_DIR)
 
-            # Mount Gradio with root_path so subpath and assets resolve correctly
             app = gr.mount_gradio_app(
                 app,
                 voice_studio_app,
                 path="/voice-studio",
                 root_path="/voice-studio",
             )
-            logger.info("Voice Studio mounted at /voice-studio and /voice-studio/")
+            logger.info("Voice Studio mounted at /voice-studio")
         except Exception as e:
-            logger.warning(f"Failed to mount Voice Studio: {e}")
+            import traceback
+            logger.warning("Failed to mount Voice Studio: %s", e)
+            logger.warning("Traceback: %s", traceback.format_exc())
             logger.info("Voice Studio can still be run separately with 'qwen-tts-voice-studio'")
+
+            @app.get("/voice-studio", response_class=HTMLResponse, include_in_schema=False)
+            @app.get("/voice-studio/", response_class=HTMLResponse, include_in_schema=False)
+            def _voice_studio_unavailable():
+                return HTMLResponse(
+                    status_code=503,
+                    content=f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Voice Studio</title></head><body style="font-family:sans-serif;padding:2rem;max-width:600px;margin:0 auto;">
+                    <h1>Voice Studio unavailable</h1>
+                    <p>The Gradio Voice Studio could not be mounted (see server logs).</p>
+                    <p>You can run it separately: <code>python -m gradio_voice_studio</code> or <code>qwen-tts-voice-studio</code>.</p>
+                    <p><a href="/">Back to API</a></p></body></html>""",
+                )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -280,7 +287,7 @@ async def root():
     # Build links dynamically
     voice_studio_link = ""
     if ENABLE_VOICE_STUDIO and GRADIO_AVAILABLE:
-        voice_studio_link = '<li><a href="/voice-studio/">🎙️ Voice Studio</a></li>'
+        voice_studio_link = '<li><a href="/voice-studio">🎙️ Voice Studio</a></li>'
     
     # Return a simple HTML page if index.html doesn't exist
     return f"""
