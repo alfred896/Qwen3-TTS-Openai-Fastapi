@@ -17,6 +17,7 @@ and profile storage directory.  See README or docstrings for usage.
 import argparse
 import base64
 import json
+import logging
 import mimetypes
 import os
 import shutil
@@ -30,6 +31,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import gradio as gr
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
@@ -329,6 +332,54 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
         state_base_url = gr.State(initial_base_url)
         state_library_dir = gr.State(str(initial_library_dir))
         state_voices = gr.State([])
+
+        # ===== TOP BAR: Model Picker =====
+        with gr.Row(elem_classes=["small"]):
+            with gr.Column(scale=2):
+                gr.Markdown("### 🎙️ Qwen3-TTS Voice Studio")
+            with gr.Column(scale=1):
+                model_dropdown = gr.Dropdown(
+                    choices=["CustomVoice", "VoiceDesign", "Base"],
+                    value="CustomVoice",
+                    label="Active Model",
+                    interactive=True,
+                )
+                model_status = gr.Textbox(
+                    value="Ready",
+                    label="Status",
+                    interactive=False,
+                    scale=1,
+                )
+
+        # Handler for model dropdown change
+        async def on_model_change(selected_model):
+            """Handle model selection change."""
+            try:
+                model_status.update(value="Switching...")
+
+                # Call backend to switch model
+                url = f"{initial_base_url}/v1/models/switch?task_type={selected_model}"
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.post(url)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    current = data.get("current", selected_model)
+                    model_status.update(value=f"✓ Loaded: {current}")
+                    return gr.Dropdown.update(value=selected_model)
+                else:
+                    model_status.update(value=f"✗ Error (HTTP {response.status_code})")
+                    return gr.Dropdown.update(value="CustomVoice")
+            except Exception as e:
+                logger.error(f"Model switch failed: {e}")
+                model_status.update(value=f"✗ Error: {str(e)[:30]}")
+                return gr.Dropdown.update(value="CustomVoice")
+
+        model_dropdown.change(
+            on_model_change,
+            inputs=model_dropdown,
+            outputs=[model_dropdown, model_status],
+        )
 
         # Header section
         gr.HTML(
