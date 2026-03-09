@@ -224,12 +224,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-from .routers.openai_compatible import router as openai_router
+# Include routers: model_manager first so /v1/models/current, /v1/models/available,
+# /v1/models/switch are matched before openai's /v1/models/{model_id}
 from .routers.model_manager import router as model_manager_router
+from .routers.openai_compatible import router as openai_router
 
-app.include_router(openai_router, prefix="/v1")
 app.include_router(model_manager_router, prefix="/v1")
+app.include_router(openai_router, prefix="/v1")
 
 # Mount static files if directory exists
 if STATIC_DIR.exists():

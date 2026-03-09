@@ -333,23 +333,40 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
         state_library_dir = gr.State(str(initial_library_dir))
         state_voices = gr.State([])
 
-        # ===== TOP BAR: Model Picker =====
-        with gr.Row(elem_classes=["small"]):
-            with gr.Column(scale=2):
-                gr.Markdown("### 🎙️ Qwen3-TTS Voice Studio")
-            with gr.Column(scale=1):
-                model_dropdown = gr.Dropdown(
-                    choices=["CustomVoice", "VoiceDesign", "Base"],
-                    value="CustomVoice",
-                    label="Active Model",
-                    interactive=True,
-                )
-                model_status = gr.Textbox(
-                    value="Ready",
-                    label="Status",
-                    interactive=False,
-                    scale=1,
-                )
+        # ===== Title =====
+        gr.Markdown("### 🎙️ Qwen3-TTS Voice Studio")
+
+        # ===== Model selector (prominent) =====
+        gr.Markdown("**TTS model** — Choose which model is loaded on the server (CustomVoice, VoiceDesign, Base).")
+        with gr.Row():
+            model_dropdown = gr.Dropdown(
+                choices=["CustomVoice", "VoiceDesign", "Base"],
+                value="CustomVoice",
+                label="Active model",
+                interactive=True,
+                scale=2,
+            )
+            model_status = gr.Textbox(
+                value="Loading…",
+                label="Status",
+                interactive=False,
+                scale=1,
+            )
+
+        # Load current model from API when the app loads
+        async def load_current_model(base_url: str):
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.get(f"{base_url}/v1/models/current")
+                if r.status_code == 200:
+                    data = r.json()
+                    current = data.get("current")
+                    if current:
+                        return current, f"✓ Loaded: {current}"
+                return "CustomVoice", "Could not get current model"
+            except Exception as e:
+                logger.warning(f"Could not fetch current model: {e}")
+                return "CustomVoice", "Ready (assume CustomVoice)"
 
         # Handler for model dropdown change
         async def on_model_change(selected_model):
@@ -378,6 +395,11 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
         model_dropdown.change(
             on_model_change,
             inputs=model_dropdown,
+            outputs=[model_dropdown, model_status],
+        )
+        demo.load(
+            fn=load_current_model,
+            inputs=[state_base_url],
             outputs=[model_dropdown, model_status],
         )
 
