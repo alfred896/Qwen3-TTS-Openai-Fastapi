@@ -300,6 +300,13 @@ body, .gradio-container { background: radial-gradient(1200px 800px at 10% 10%, v
   border-radius: 18px;
 }
 .small { opacity: 0.8; font-size: 0.95em; }
+.model-selector-block {
+  padding: 14px 18px !important;
+  border: 1px solid var(--border) !important;
+  background: linear-gradient(135deg, rgba(34,197,94,0.14), rgba(59,130,246,0.08)) !important;
+  border-radius: 12px !important;
+  margin-bottom: 16px !important;
+}
 """
 
 TABLE_HEADERS = [
@@ -336,22 +343,24 @@ def build_app(initial_base_url: str, initial_library_dir: Path) -> gr.Blocks:
         # ===== Title =====
         gr.Markdown("### 🎙️ Qwen3-TTS Voice Studio")
 
-        # ===== Model selector (prominent) =====
-        gr.Markdown("**TTS model** — Choose which model is loaded on the server (CustomVoice, VoiceDesign, Base).")
-        with gr.Row():
-            model_dropdown = gr.Dropdown(
-                choices=["CustomVoice", "VoiceDesign", "Base"],
-                value="CustomVoice",
-                label="Active model",
-                interactive=True,
-                scale=2,
-            )
-            model_status = gr.Textbox(
-                value="Loading…",
-                label="Status",
-                interactive=False,
-                scale=1,
-            )
+        # ===== Model selector: always visible block at top =====
+        with gr.Accordion("🔄 Server model — switch CustomVoice / VoiceDesign / Base", open=True, elem_classes=["model-selector-block"]):
+            with gr.Row():
+                model_dropdown = gr.Dropdown(
+                    choices=["CustomVoice", "VoiceDesign", "Base"],
+                    value="CustomVoice",
+                    label="Active model",
+                    interactive=True,
+                    scale=2,
+                    elem_id="voice-studio-model-dropdown",
+                )
+                model_status = gr.Textbox(
+                    value="Loading…",
+                    label="Status",
+                    interactive=False,
+                    scale=1,
+                    elem_id="voice-studio-model-status",
+                )
 
         # Load current model from API when the app loads
         async def load_current_model(base_url: str):
