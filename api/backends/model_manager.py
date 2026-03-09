@@ -7,10 +7,11 @@ Handles model lifecycle: download, load, unload with GPU memory management.
 """
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -48,7 +49,8 @@ class ModelManager:
 
         self._current_model: Optional[str] = None
         self._is_loading: bool = False
-        self._model_instances: Dict[str, any] = {}
+        self._model_instances: Dict[str, Any] = {}
+        self._load_lock = asyncio.Lock()  # Lock per async safety
 
         logger.info(f"ModelManager initialized with {len(models_config)} models")
         logger.info(f"Cache dir: {self.cache_dir}")
@@ -81,9 +83,9 @@ class ModelManager:
                 logger.info(f"Downloading {task_type} ({model_id})...")
                 # Placeholder: actual download logic will be implemented
                 results[task_type] = True
-                logger.info(f"✓ Downloaded {task_type}")
-            except Exception as e:
-                logger.error(f"✗ Failed to download {task_type}: {e}")
+                logger.info(f"Downloaded {task_type}")
+            except (OSError, IOError, Exception) as e:
+                logger.error(f"Failed to download {task_type}: {e}")
                 results[task_type] = False
 
         return results
@@ -104,11 +106,13 @@ class ModelManager:
             logger.error(f"Unknown model: {task_type}")
             return False
 
-        if self._current_model == task_type:
-            logger.info(f"Model {task_type} already loaded")
-            return True
+        async with self._load_lock:  # Protection with lock
+            if self._current_model == task_type:
+                logger.info(f"Model {task_type} already loaded")
+                return True
 
-        self._is_loading = True
+            self._is_loading = True
+
         try:
             # Unload current model if different
             if self._current_model is not None:
@@ -117,9 +121,9 @@ class ModelManager:
             logger.info(f"Loading model: {task_type}")
             # Placeholder: actual load logic will be implemented
             self._current_model = task_type
-            logger.info(f"✓ Loaded {task_type}")
+            logger.info(f"Loaded {task_type}")
             return True
-        except Exception as e:
+        except (OSError, IOError, Exception) as e:
             logger.error(f"Failed to load {task_type}: {e}")
             return False
         finally:
@@ -144,12 +148,14 @@ class ModelManager:
                 torch.cuda.empty_cache()
                 logger.info("GPU cache cleared")
 
-            self._current_model = None
-            logger.info("✓ Model unloaded")
             return True
-        except Exception as e:
+        except (OSError, IOError, Exception) as e:
             logger.error(f"Failed to unload model: {e}")
             return False
+        finally:
+            # Reset state AFTER try-except block
+            self._current_model = None
+            logger.info("Model unloaded")
 
     def get_saved_voices(self) -> List[Dict]:
         """
@@ -177,11 +183,10 @@ class ModelManager:
             # Try to load metadata from .json sidecar
             if json_file.exists():
                 try:
-                    import json
                     with open(json_file) as f:
                         metadata = json.load(f)
                     voice_entry.update(metadata)
-                except Exception as e:
+                except (OSError, IOError, Exception) as e:
                     logger.warning(f"Failed to load metadata for {pkl_file.stem}: {e}")
 
             voices.append(voice_entry)

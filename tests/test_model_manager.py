@@ -4,7 +4,7 @@ from api.backends.model_manager import ModelManager
 
 
 @pytest.fixture
-def model_manager():
+def model_manager(tmp_path):
     """Create a ModelManager instance for testing."""
     return ModelManager(
         models_config={
@@ -12,8 +12,8 @@ def model_manager():
             "VoiceDesign": "Qwen/Qwen3-TTS-12Hz-Voice-Design",
             "Base": "Qwen/Qwen3-TTS",
         },
-        cache_dir=Path(".cache_test"),
-        voice_library_dir=Path("./voice_library_test"),
+        cache_dir=tmp_path / "cache",
+        voice_library_dir=tmp_path / "voice_library",
     )
 
 
@@ -38,3 +38,39 @@ def test_model_manager_state(model_manager):
     """Test model manager tracks current model state."""
     assert model_manager.get_current_model() is None
     assert model_manager.is_loading() == False
+
+
+@pytest.mark.asyncio
+async def test_load_model_success(model_manager):
+    """Test loading a model."""
+    success = await model_manager.load_model("CustomVoice")
+    assert success is True
+    assert model_manager.get_current_model() == "CustomVoice"
+    assert model_manager.is_loading() is False
+
+
+@pytest.mark.asyncio
+async def test_load_model_unknown(model_manager):
+    """Test loading unknown model fails."""
+    success = await model_manager.load_model("UnknownModel")
+    assert success is False
+    assert model_manager.get_current_model() is None
+
+
+@pytest.mark.asyncio
+async def test_unload_model(model_manager):
+    """Test unloading a model."""
+    await model_manager.load_model("CustomVoice")
+    success = await model_manager.unload_model()
+    assert success is True
+    assert model_manager.get_current_model() is None
+
+
+@pytest.mark.asyncio
+async def test_load_different_model_unloads_previous(model_manager):
+    """Test loading a different model unloads the previous one."""
+    await model_manager.load_model("CustomVoice")
+    assert model_manager.get_current_model() == "CustomVoice"
+
+    await model_manager.load_model("Base")
+    assert model_manager.get_current_model() == "Base"
