@@ -85,16 +85,19 @@ class ModelManager:
             try:
                 logger.info(f"Downloading {task_type} ({model_id})...")
 
-                # Use HuggingFace API to download model
+                # Use HuggingFace API to download model (keyword args for huggingface_hub compatibility)
                 from huggingface_hub import snapshot_download
+
+                def _download(repo_id: str, cache_dir: str):
+                    return snapshot_download(repo_id=repo_id, cache_dir=cache_dir)
 
                 # Run download in thread pool to avoid blocking
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
                     None,
-                    snapshot_download,
+                    _download,
                     model_id,
-                    str(self.cache_dir),  # cache_dir
+                    str(self.cache_dir),
                 )
 
                 results[task_type] = True
