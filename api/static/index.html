@@ -1036,6 +1036,7 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
                     const data = await response.json();
                     status.value = '✓ Loaded: ' + (data.current || taskType);
                     status.style.color = '#00ff88';
+                    if (typeof checkVoiceCloneCapabilities === 'function') checkVoiceCloneCapabilities();
                 } else {
                     status.value = '✗ Error (HTTP ' + response.status + ')';
                     status.style.color = '#ff3232';
@@ -1253,9 +1254,7 @@ response.<span class="function">stream_to_file</span>(<span class="string">"outp
                                 <span style="color: #888; font-size: 12px;">Model: ${data.model_type || 'unknown'}</span>
                             </div>
                             <p style="color: #888; font-size: 13px;">
-                                Voice cloning requires the Base model. Set 
-                                <code style="color: #00aaff; background: rgba(0,170,255,0.1); padding: 2px 6px; border-radius: 4px;">TTS_MODEL_NAME=Qwen/Qwen3-TTS-12Hz-1.7B-Base</code>
-                                and restart the server to enable this feature.
+                                Voice cloning requires the <strong>Base</strong> model. Use the <strong>Server model</strong> selector at the top of this page to switch to <strong>Base</strong>, then try again.
                             </p>
                         `;
                         cloneForm.style.display = 'none';

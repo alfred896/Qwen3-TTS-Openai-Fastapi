@@ -907,17 +907,47 @@ async def list_voices():
         }
 
 
+def _model_task_to_type(task: Optional[str]) -> str:
+    """Map ModelManager task name to capabilities model_type."""
+    if task == "Base":
+        return "base"
+    if task == "CustomVoice":
+        return "customvoice"
+    if task == "VoiceDesign":
+        return "voicedesign"
+    return "unknown"
+
+
 @router.get("/audio/voice-clone/capabilities")
 async def get_voice_clone_capabilities():
     """
     Get voice cloning capabilities of the current backend.
 
-    Returns whether voice cloning is supported and what modes are available.
-    Voice cloning requires the Base model (Qwen3-TTS-12Hz-1.7B-Base).
+    When ModelManager is in use, capabilities are derived from the currently
+    loaded model (GET /v1/models/current). Otherwise falls back to the
+    backend's reported model type. Voice cloning is supported only when
+    the current model is Base.
     """
     try:
-        backend = await get_tts_backend()
+        # Prefer ModelManager current model so UI reflects the selected model (CustomVoice / Base / VoiceDesign)
+        try:
+            from .model_manager import get_model_manager
+            manager = get_model_manager()
+            current = manager.get_current_model()
+            if current is not None:
+                model_type = _model_task_to_type(current)
+                supports_cloning = current == "Base"
+                return VoiceCloneCapabilities(
+                    supported=supports_cloning,
+                    model_type=model_type,
+                    icl_mode_available=supports_cloning,
+                    x_vector_mode_available=supports_cloning,
+                )
+        except Exception:
+            pass
 
+        # Fallback: use backend (e.g. when ModelManager is not initialized)
+        backend = await get_tts_backend()
         supports_cloning = backend.supports_voice_cloning()
         model_type = backend.get_model_type() if hasattr(backend, 'get_model_type') else "unknown"
 
