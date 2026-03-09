@@ -360,6 +360,66 @@ class OfficialQwen3TTSBackend(TTSBackend):
             logger.error(f"Voice cloning failed: {e}")
             raise RuntimeError(f"Voice cloning failed: {e}")
 
+    async def generate_voice_design(
+        self,
+        text: str,
+        language: str = "English",
+        instruct: str = "",
+        speed: float = 1.0,
+    ) -> Tuple[np.ndarray, int]:
+        """
+        Generate speech using voice design (free-form voice control).
+
+        Args:
+            text: The text to synthesize
+            language: Language code (e.g., "English", "Chinese")
+            instruct: Voice instruction in natural language
+                     (e.g., "清晰女声，温和的语气" or "Clear female voice, professional tone")
+            speed: Speech speed multiplier (0.25 to 4.0)
+
+        Returns:
+            Tuple of (audio_array, sample_rate)
+        """
+        if not self._ready:
+            await self.initialize()
+
+        # Check if model supports voice design
+        if "VoiceDesign" not in self.model_name:
+            raise RuntimeError(
+                "Voice design requires the VoiceDesign model (Qwen3-TTS-12Hz-1.7B-VoiceDesign). "
+                f"The current model ({self.model_name}) does not support voice design."
+            )
+
+        # Check if the model has generate_voice_design method
+        if not hasattr(self.model, "generate_voice_design"):
+            raise RuntimeError(
+                "Voice design not supported by the loaded model. "
+                "Ensure you're using Qwen3-TTS-12Hz-1.7B-VoiceDesign."
+            )
+
+        try:
+            # Offload blocking model call to a thread so the event loop stays responsive
+            wavs, sr = await asyncio.to_thread(
+                self.model.generate_voice_design,
+                text=text,
+                language=language,
+                instruct=instruct,
+            )
+
+            audio = wavs[0]
+
+            # Apply speed adjustment if needed
+            if speed != 1.0 and LIBROSA_AVAILABLE:
+                audio = librosa.effects.time_stretch(audio.astype(np.float32), rate=speed)
+            elif speed != 1.0:
+                logger.warning("Speed adjustment requested but librosa not available")
+
+            return audio, sr
+
+        except Exception as e:
+            logger.error(f"Voice design generation failed: {e}")
+            raise RuntimeError(f"Voice design generation failed: {e}")
+
     async def load_custom_voices(self, custom_voices_dir: str) -> None:
         """Load custom voices from a directory, caching prompt artifacts."""
         voices_path = Path(custom_voices_dir)

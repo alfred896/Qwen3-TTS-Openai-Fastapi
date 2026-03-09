@@ -163,3 +163,36 @@ class VoiceCloneCapabilities(BaseModel):
         ...,
         description="Whether x-vector only mode is available.",
     )
+
+
+class VoiceDesignRequest(BaseModel):
+    """Request schema for voice design endpoint (free-form voice control)."""
+
+    text: str = Field(
+        ...,
+        description="Text to synthesize. Maximum length is 4096 characters.",
+        max_length=4096,
+    )
+    language: str = Field(
+        default="English",
+        description="Language code for the text (e.g., 'English', 'Chinese', 'Italian').",
+    )
+    instruct: str = Field(
+        ...,
+        description="Voice design instruction in natural language. Examples: "
+        "'清晰女声，温和的语气' (Chinese) or 'Clear female voice, professional tone' (English)",
+    )
+    response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = Field(
+        default="mp3",
+        description="The format to return audio in. Supported formats: mp3, opus, aac, flac, wav, pcm.",
+    )
+    speed: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=4.0,
+        description="The speed of the generated audio. Select a value from 0.25 to 4.0.",
+    )
+    normalization_options: Optional[NormalizationOptions] = Field(
+        default_factory=NormalizationOptions,
+        description="Options for the text normalization system",
+    )

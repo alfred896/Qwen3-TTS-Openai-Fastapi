@@ -1,0 +1,11 @@
+{
+  "name": "Alice Voice",
+  "profile_id": "alice_voice_e329a8f2",
+  "ref_audio_filename": "reference.wav",
+  "ref_text": "Hello, this is my voice",
+  "x_vector_only_mode": false,
+  "use_icl_mode": true,
+  "language": "English",
+  "task_type": "VoiceCloning",
+  "created_at": "2026-03-09T10:13:28.278140"
+}

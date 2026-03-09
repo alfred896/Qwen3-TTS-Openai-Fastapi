@@ -27,6 +27,7 @@ from ..structures.schemas import (
     VoiceInfo,
     VoiceCloneRequest,
     VoiceCloneCapabilities,
+    VoiceDesignRequest,
 )
 from ..services.text_processing import normalize_text
 from ..services.audio_encoding import encode_audio, get_content_type, DEFAULT_SAMPLE_RATE
@@ -550,6 +551,98 @@ async def create_speech(
                 )
 
         # ----------------------------------------------------------------
+        # Voice design mode: "design:DesignName" -> load design + voice design
+        # ----------------------------------------------------------------
+        if request.voice.lower().startswith("design:"):
+            design_name = request.voice[len("design:"):].strip()
+            if not design_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_voice",
+                        "message": (
+                            "The 'design:' prefix requires a design name, "
+                            "e.g. voice='design:MyDesign'"
+                        ),
+                        "type": "invalid_request_error",
+                    },
+                )
+            try:
+                from api.services.voice_profile_manager import VoiceProfileManager
+                from api.config import VOICE_LIBRARY_DIR
+
+                manager = VoiceProfileManager(VOICE_LIBRARY_DIR)
+                design = manager.get_voice_design_profile(design_name)
+
+                if not design:
+                    raise ValueError(
+                        f"Voice design profile '{design_name}' not found in {VOICE_LIBRARY_DIR}/profiles/"
+                    )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error": "design_not_found",
+                        "message": str(exc),
+                        "type": "invalid_request_error",
+                    },
+                )
+
+            backend = await get_tts_backend()
+
+            # Check that voice design is supported by the current backend/model
+            if not hasattr(backend, 'generate_voice_design'):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "voice_design_not_supported",
+                        "message": (
+                            "Voice design requires the VoiceDesign model to be loaded. "
+                            "Load it with: TTS_MODEL_ID='Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign'"
+                        ),
+                        "type": "invalid_request_error",
+                    },
+                )
+
+            design_lang = language if language != "Auto" else design.get("language", "English")
+            design_instruct = design.get("instruct", "")
+
+            logger.info(
+                f"Voice design '{design['name']}': "
+                f"lang={design_lang}, "
+                f"instruct='{design_instruct}'"
+            )
+
+            gen_start = time.time()
+            async with _generation_semaphore:
+                audio, sample_rate = await backend.generate_voice_design(
+                    text=normalized_text,
+                    language=design_lang,
+                    instruct=design_instruct,
+                    speed=request.speed,
+                )
+            gen_time = time.time() - gen_start
+            audio_dur = len(audio) / sample_rate if sample_rate > 0 else 0
+            rtf = gen_time / audio_dur if audio_dur > 0 else 0
+            logger.info(
+                f"Voice design done: gen={gen_time:.2f}s "
+                f"audio={audio_dur:.2f}s RTF={rtf:.2f}x"
+            )
+
+            fmt = request.response_format
+            audio_bytes = await asyncio.to_thread(encode_audio, audio, fmt, sample_rate)
+            content_type = get_content_type(fmt)
+
+            return Response(
+                content=audio_bytes,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"inline; filename=speech.{fmt}",
+                    "Cache-Control": "no-cache",
+                },
+            )
+
+        # ----------------------------------------------------------------
         # Real-time streaming for built-in voices (optimized backend only)
         # ----------------------------------------------------------------
         if request.stream:
@@ -967,6 +1060,107 @@ async def create_voice_clone(
         raise
     except Exception as e:
         logger.error(f"Voice cloning failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "processing_error",
+                "message": str(e),
+                "type": "server_error",
+            },
+        )
+
+
+@router.post("/audio/voice-design")
+async def voice_design(
+    request: VoiceDesignRequest,
+    client_request: Request,
+):
+    """
+    Voice design endpoint for free-form voice control.
+
+    Generates audio using natural language voice instructions.
+    Requires the VoiceDesign model to be loaded.
+
+    **Example:**
+    ```json
+    {
+        "text": "Hello, this is a test",
+        "language": "English",
+        "instruct": "Clear female voice with a professional tone",
+        "response_format": "wav"
+    }
+    ```
+    """
+    backend = await get_tts_backend()
+
+    # Check if backend supports voice design
+    if not hasattr(backend, 'generate_voice_design'):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "voice_design_not_supported",
+                "message": (
+                    "Voice design requires the VoiceDesign model. "
+                    "Load it with: TTS_MODEL_ID='Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign' "
+                    "Or use voice='design:ProfileName' in the speech endpoint."
+                ),
+                "type": "invalid_request_error",
+            },
+        )
+
+    try:
+        # Normalize input text
+        normalized_text = normalize_text(request.text, request.normalization_options)
+
+        if not normalized_text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_input",
+                    "message": "Input text is empty after normalization",
+                    "type": "invalid_request_error",
+                },
+            )
+
+        logger.info(
+            f"Voice design: lang={request.language}, "
+            f"instruct='{request.instruct[:50]}...', "
+            f"speed={request.speed}"
+        )
+
+        gen_start = time.time()
+        async with _generation_semaphore:
+            audio, sample_rate = await backend.generate_voice_design(
+                text=normalized_text,
+                language=request.language,
+                instruct=request.instruct,
+                speed=request.speed,
+            )
+        gen_time = time.time() - gen_start
+        audio_dur = len(audio) / sample_rate if sample_rate > 0 else 0
+        rtf = gen_time / audio_dur if audio_dur > 0 else 0
+        logger.info(
+            f"Voice design done: gen={gen_time:.2f}s "
+            f"audio={audio_dur:.2f}s RTF={rtf:.2f}x"
+        )
+
+        fmt = request.response_format
+        audio_bytes = await asyncio.to_thread(encode_audio, audio, fmt, sample_rate)
+        content_type = get_content_type(fmt)
+
+        return Response(
+            content=audio_bytes,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"inline; filename=voice_design.{fmt}",
+                "Cache-Control": "no-cache",
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Voice design generation failed: {e}")
         raise HTTPException(
             status_code=500,
             detail={

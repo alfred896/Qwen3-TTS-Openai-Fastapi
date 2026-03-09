@@ -147,3 +147,25 @@ if USE_IPEX and TTS_DEVICE in ("cpu", "auto"):
         )
 else:
     IPEX_AVAILABLE = False
+
+# ============================================================================
+# Voice Design and Management Settings
+# ============================================================================
+
+TTS_VOICE_DESIGN_ENABLED = os.getenv("TTS_VOICE_DESIGN_ENABLED", "true").lower() == "true"
+"""
+Whether to enable voice design endpoint.
+Requires VoiceDesign model to be loaded.
+"""
+
+VOICE_LIBRARY_DIR = os.getenv("VOICE_LIBRARY_DIR", "./voice_library")
+"""
+Directory for voice profiles (cloning and design).
+Profiles stored as: {VOICE_LIBRARY_DIR}/profiles/{profile_id}/
+"""
+
+VOICE_PKL_DIR = os.getenv("VOICE_PKL_DIR", "./voice_library/pkl_profiles")
+"""
+Directory for saved voice pkl profiles (embeddings, speaker vectors).
+Used for advanced voice cloning features.
+"""
