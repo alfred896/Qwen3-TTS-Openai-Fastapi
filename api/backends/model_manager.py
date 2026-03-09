@@ -111,7 +111,7 @@ class ModelManager:
 
     async def load_model(self, task_type: str) -> bool:
         """
-        Load specified model into memory.
+        Load specified model into memory using backend factory.
 
         If a different model is already loaded, unload it first.
 
@@ -125,21 +125,36 @@ class ModelManager:
             logger.error(f"Unknown model: {task_type}")
             return False
 
-        async with self._load_lock:  # Protection with lock
+        async with self._load_lock:
             if self._current_model == task_type:
                 logger.info(f"Model {task_type} already loaded")
                 return True
 
-            self._is_loading = True
-
-        try:
-            # Unload current model if different
             if self._current_model is not None:
-                await self.unload_model()
+                # Unload previous model
+                try:
+                    await self.unload_model()
+                except Exception as e:
+                    logger.warning(f"Error unloading previous model: {e}")
 
+        self._is_loading = True
+        try:
             logger.info(f"Loading model: {task_type}")
-            # Placeholder: actual load logic will be implemented
+
+            # Set model env var for backend factory
+            model_id = self.models_config[task_type]
+            os.environ["TTS_MODEL_ID"] = model_id
+            os.environ["TTS_MODEL_NAME"] = model_id
+
+            # Get backend (will load the model)
+            # Run in executor to avoid blocking
+            from .factory import get_backend
+            loop = asyncio.get_event_loop()
+            backend = await loop.run_in_executor(None, get_backend)
+
+            self._model_instances[task_type] = backend
             self._current_model = task_type
+
             logger.info(f"Loaded {task_type}")
             return True
         except (OSError, IOError, Exception) as e:
@@ -160,21 +175,24 @@ class ModelManager:
 
         try:
             logger.info(f"Unloading model: {self._current_model}")
-            # Placeholder: actual unload logic will be implemented
+
+            # Get backend instance if it exists
+            if self._current_model in self._model_instances:
+                backend = self._model_instances[self._current_model]
+                del self._model_instances[self._current_model]
 
             # Clear GPU cache
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                logger.info("GPU cache cleared")
+                logger.debug("GPU cache cleared")
 
+            logger.info("Model unloaded")
             return True
         except (OSError, IOError, Exception) as e:
             logger.error(f"Failed to unload model: {e}")
             return False
         finally:
-            # Reset state AFTER try-except block
             self._current_model = None
-            logger.info("Model unloaded")
 
     def get_saved_voices(self) -> List[Dict]:
         """

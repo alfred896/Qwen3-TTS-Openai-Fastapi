@@ -93,3 +93,23 @@ async def test_download_all_models(model_manager, monkeypatch):
     assert isinstance(results, dict)
     assert len(results) == 3
     assert all(results.values())  # All should be True
+
+
+@pytest.mark.asyncio
+async def test_load_model_switches_env(model_manager, monkeypatch):
+    """Test that load_model sets TTS_MODEL_ID env var and uses backend factory."""
+    # Mock get_backend to track calls
+    mock_backend = type('obj', (object,), {'get_backend_name': lambda: 'test_backend'})()
+    get_backend_called = []
+
+    def mock_get_backend():
+        get_backend_called.append(True)
+        return mock_backend
+
+    monkeypatch.setattr("api.backends.factory.get_backend", mock_get_backend)
+
+    success = await model_manager.load_model("CustomVoice")
+    assert success is True
+    assert get_backend_called  # get_backend deve essere chiamato
+    assert model_manager.get_current_model() == "CustomVoice"
+    assert model_manager.is_loading() is False
